@@ -89,8 +89,20 @@ input, textarea, select { font: inherit; color: var(--fg); -webkit-user-select: 
 #adjust { display: flex; flex-direction: column; gap: 10px; }
 .only-landscape { display: none !important; }
 
+/* Voice level meter: vertical on the right in portrait, horizontal top-right in landscape. */
+.meter { position: absolute; right: calc(var(--sr) + 14px); top: 52%; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 10px 7px; border-radius: 99px; background: rgba(0,0,0,.4); pointer-events: none; --lvl: 0; }
+.meter svg { width: 18px; height: 18px; color: #fff; }
+.meter-track { width: 8px; height: 110px; border-radius: 4px; background: rgba(255,255,255,.22); overflow: hidden; display: flex; align-items: flex-end; }
+.meter-track i { display: block; width: 100%; height: 100%; border-radius: 4px; background: var(--ok); transform-origin: bottom; transform: scaleY(var(--lvl)); }
+.meter.quiet .meter-track i { background: var(--accent); }
+.meter.loud .meter-track i { background: var(--rec); }
+
 /* Landscape (BigVu-style): full-screen video, text on the left, tools in a column on the right. */
 @media (orientation: landscape) {
+  .meter { top: calc(var(--st) + 12px); right: calc(96px + var(--sr) + 12px); flex-direction: row-reverse; padding: 7px 10px; }
+  .meter-track { width: 120px; height: 8px; align-items: stretch; }
+  .meter-track i { transform-origin: left; transform: scaleX(var(--lvl)); }
   .rec-ui { grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: minmax(0, 1fr) auto auto auto;
     grid-template-areas: "prompter controls" "error controls" "toast controls" "status controls"; }
@@ -101,6 +113,7 @@ input, textarea, select { font: inherit; color: var(--fg); -webkit-user-select: 
   .controls .buttons { flex-direction: column; justify-content: center; gap: 12px; height: 100%; }
   #speedRow { display: none; }
   .only-landscape { display: flex !important; }
+  .only-portrait { display: none !important; }
   #adjust { position: absolute; right: calc(100% + 8px); bottom: calc(var(--sb) + 10px); width: min(380px, 55vw); max-height: calc(100vh - 20px);
     overflow-y: auto; padding: 14px; border-radius: 16px; background: rgba(11,13,26,.9); }
 }
@@ -234,7 +247,8 @@ input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); height: 
       <div id="adjust" hidden>
         <div class="row only-landscape"><label for="aSpeed">Speed</label><input type="range" id="aSpeed" min="10" max="200" step="1"><output id="aSpeedV"></output></div>
         <div class="row"><label for="aSize">Text size</label><input type="range" id="aSize" min="18" max="80" step="1"><output id="aSizeV"></output></div>
-        <div class="row"><label for="aHeight">Prompter area</label><input type="range" id="aHeight" min="20" max="75" step="1"><output id="aHeightV"></output></div>
+        <div class="row only-landscape"><label for="aWidth">Text width</label><input type="range" id="aWidth" min="30" max="85" step="1"><output id="aWidthV"></output></div>
+        <div class="row only-portrait"><label for="aHeight">Prompter area</label><input type="range" id="aHeight" min="20" max="75" step="1"><output id="aHeightV"></output></div>
         <div class="row"><label for="aBg">Background</label><input type="range" id="aBg" min="0" max="95" step="1"><output id="aBgV"></output></div>
         <div class="row"><label for="aMargin">Side margin</label><input type="range" id="aMargin" min="0" max="80" step="1"><output id="aMarginV"></output></div>
         <div class="toggles">
@@ -256,6 +270,10 @@ input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); height: 
         <button class="round" id="openTakes2" aria-label="Saved takes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
       </div>
     </div>
+  </div>
+  <div class="meter" id="meter" hidden aria-label="Voice level">
+    <div class="meter-track"><i id="meterFill"></i></div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
   </div>
   <div class="countdown" id="countdown" hidden></div>
 </section>
@@ -282,7 +300,8 @@ input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); height: 
       <h3>Teleprompter</h3>
       <div class="row"><label for="sSpeed">Scroll speed</label><input type="range" id="sSpeed" min="10" max="200" step="1"><output id="sSpeedV"></output></div>
       <div class="row"><label for="sSize">Text size</label><input type="range" id="sSize" min="18" max="80" step="1"><output id="sSizeV"></output></div>
-      <div class="row"><label for="sHeight">Prompter area</label><input type="range" id="sHeight" min="20" max="75" step="1"><output id="sHeightV"></output></div>
+      <div class="row"><label for="sHeight">Text height (portrait)</label><input type="range" id="sHeight" min="20" max="75" step="1"><output id="sHeightV"></output></div>
+      <div class="row"><label for="sWidth">Text width (landscape)</label><input type="range" id="sWidth" min="30" max="85" step="1"><output id="sWidthV"></output></div>
       <div class="row"><label for="sBg">Background</label><input type="range" id="sBg" min="0" max="95" step="1"><output id="sBgV"></output></div>
       <label class="check">Center text<input type="checkbox" id="sCenter"></label>
       <label class="check">Mirror text (for a glass rig)<input type="checkbox" id="sMirror"></label>
@@ -322,10 +341,11 @@ const store = {
   set(key, value) { try { localStorage.setItem("prompter." + key, JSON.stringify(value)); } catch {} },
 };
 
-const DEFAULTS = { v: 2, res: 1080, fps: 30, quality: "high", fill: true, voice: false, countdown: 3, autoScroll: true,
-  speed: 40, size: 34, height: 45, bg: 20, margin: 20, center: false, mirror: false, facing: "user" };
+const DEFAULTS = { v: 3, res: 1080, fps: 30, quality: "high", fill: true, voice: false, countdown: 3, autoScroll: true,
+  speed: 40, size: 34, height: 33, width: 55, bg: 20, margin: 20, center: false, mirror: false, facing: "user" };
 const settings = Object.assign({}, DEFAULTS, store.get("settings", {}));
-if (settings.v !== 2) { Object.assign(settings, { v: 2, fill: true, bg: 20, height: 45 }); store.set("settings", settings); } // switch older installs to the full-screen look
+// Move older installs to the current look: full-screen video, text kept close to the camera.
+if (settings.v !== 3) { Object.assign(settings, { v: 3, fill: true, bg: 20, height: 33, width: 55 }); store.set("settings", settings); } // switch older installs to the full-screen look
 const saveSettings = () => store.set("settings", settings);
 
 const SAMPLE = `Hi everyone, welcome back to the channel.
@@ -431,7 +451,13 @@ $("pasteBtn").onclick = async () => {
     if (t) { const b = $("body"); b.value = b.value ? b.value + "\n" + t : t; saveEditor(); updateMeta(); }
   } catch { $("body").focus(); }
 };
-$("startBtn").onclick = () => { saveEditor(); openRecorder(current().body); };
+$("startBtn").onclick = () => { unlockAudio(); saveEditor(); openRecorder(current().body); };
+// Any tap on the recording screen also wakes the meter if iPhone kept audio asleep.
+$("recorder").addEventListener("pointerdown", () => {
+  const wasOff = !audioCtx || audioCtx.state !== "running";
+  unlockAudio();
+  if (wasOff && stream && !meterRAF) setTimeout(startMeter, 100);
+});
 
 /* ---------------- prompter ---------------- */
 const P = { offset: 0, playing: false, last: 0, max: 0, readingLine: 0 };
@@ -439,9 +465,17 @@ function layoutPrompter() {
   const safeTop = parseFloat(getComputedStyle($("safeProbe")).paddingTop) || 0;
   let h = window.innerHeight * settings.height / 100 + safeTop;
   $("prompter").style.height = h + "px";
-  if (window.innerWidth > window.innerHeight) h = $("prompter").clientHeight || window.innerHeight; // landscape: full height
-  $("prompterBg").style.opacity = settings.bg / 100;
+  const landscape = window.innerWidth > window.innerHeight;
   const t = $("prompterText");
+  if (landscape) {
+    // Full height, but only part of the width, so your eyes stay near the camera.
+    h = $("prompter").clientHeight || window.innerHeight;
+    const w = Math.round(window.innerWidth * settings.width / 100) + "px";
+    t.style.right = "auto"; t.style.width = w; $("prompterBg").style.right = "auto"; $("prompterBg").style.width = w;
+  } else {
+    t.style.right = ""; t.style.width = ""; $("prompterBg").style.right = ""; $("prompterBg").style.width = "";
+  }
+  $("prompterBg").style.opacity = settings.bg / 100;
   t.style.fontSize = settings.size + "px";
   t.style.lineHeight = "1.3";
   t.style.padding = `0 calc(${settings.margin}px + var(--sr)) 0 calc(${settings.margin}px + var(--sl))`;
@@ -490,7 +524,7 @@ $("playBtn").onclick = () => setPlaying(!P.playing);
 $("rewindBtn").onclick = () => { P.offset = 0; paintPrompter(); };
 
 /* ---------------- sliders & toggles bound to settings ---------------- */
-const fmt = { speed: (v) => v, size: (v) => v, height: (v) => v + "%", bg: (v) => v + "%", margin: (v) => v };
+const fmt = { speed: (v) => v, size: (v) => v, height: (v) => v + "%", width: (v) => v + "%", bg: (v) => v + "%", margin: (v) => v };
 function bindRange(id, key) {
   const el = $(id), out = $(id + "V");
   const sync = () => { el.value = settings[key]; if (out) out.textContent = fmt[key](settings[key]); };
@@ -516,6 +550,7 @@ const syncers = [
   bindRange("speed", "speed"), bindRange("sSpeed", "speed"), bindRange("aSpeed", "speed"),
   bindRange("aSize", "size"), bindRange("sSize", "size"),
   bindRange("aHeight", "height"), bindRange("sHeight", "height"),
+  bindRange("aWidth", "width"), bindRange("sWidth", "width"),
   bindRange("aBg", "bg"), bindRange("sBg", "bg"),
   bindRange("aMargin", "margin"),
   bindCheck("aCenter", "center", layoutPrompter), bindCheck("sCenter", "center", layoutPrompter),
@@ -582,6 +617,7 @@ async function startCamera() {
   v.classList.toggle("unmirrored", settings.facing !== "user");
   try { await v.play(); } catch {}
   updateBadge();
+  startMeter();
 }
 function updateBadge() {
   if (!stream || recording) return;
@@ -600,7 +636,50 @@ function keepPreviewPlaying() {
 $("preview").addEventListener("pause", () => setTimeout(keepPreviewPlaying, 50));
 $("preview").addEventListener("loadedmetadata", updateBadge);
 $("preview").addEventListener("resize", updateBadge);
-function stopCamera() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; }
+function stopCamera() { stopMeter(); if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; }
+
+/* ---------------- voice level meter ---------------- */
+let audioCtx = null, meterSrc = null, meterRAF = 0;
+// iPhone only lets audio processing start from a tap, so call this inside tap handlers.
+function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state !== "running") audioCtx.resume().catch(() => {});
+  } catch {}
+}
+function startMeter() {
+  stopMeter();
+  const track = stream?.getAudioTracks()[0];
+  if (!track || !audioCtx) return;
+  let analyser;
+  try {
+    meterSrc = audioCtx.createMediaStreamSource(new MediaStream([track]));
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
+    meterSrc.connect(analyser);
+  } catch { return; }
+  const meter = $("meter"), buf = new Float32Array(analyser.fftSize);
+  meter.hidden = false;
+  let level = 0;
+  const loop = () => {
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0, peak = 0;
+    for (let i = 0; i < buf.length; i++) { const v = buf[i]; sum += v * v; if (Math.abs(v) > peak) peak = Math.abs(v); }
+    const db = 20 * Math.log10(Math.sqrt(sum / buf.length) || 1e-8);   // about -60 (silence) to 0 (max)
+    const target = Math.max(0, Math.min(1, (db + 55) / 50));
+    level = target > level ? target : level * 0.9 + target * 0.1;        // fast rise, slow fall
+    meter.style.setProperty("--lvl", level.toFixed(3));
+    meter.classList.toggle("loud", peak > 0.95 || level > 0.92);
+    meter.classList.toggle("quiet", level < 0.3);
+    meterRAF = requestAnimationFrame(loop);
+  };
+  loop();
+}
+function stopMeter() {
+  cancelAnimationFrame(meterRAF); meterRAF = 0;
+  try { meterSrc?.disconnect(); } catch {}
+  meterSrc = null;
+  const m = $("meter"); if (m) m.hidden = true;
+}
 
 function pickMime() {
   const opts = ["video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4;codecs=avc1,mp4a.40.2", "video/mp4",
