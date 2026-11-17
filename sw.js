@@ -1,5 +1,5 @@
 // Caches the app so it opens even without internet. Bump VERSION after editing index.html.
-const VERSION = "prompter-v1";
+const VERSION = "prompter-v2";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
