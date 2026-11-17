@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Prompter</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Prompter">
+<meta name="theme-color" content="#0b0d1a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+/* Layout: a library → editor → full-screen camera flow. Single dark look, like a camera app. */
+:root {
+  --bg: #0b0d1a;
+  --surface: #161a2e;
+  --surface-2: #20253f;
+  --line: #2c3254;
+  --fg: #eef0fa;
+  --muted: #9097b8;
+  --accent: #ffd60a;   /* reading-line yellow */
+  --rec: #eb2830;      /* record red */
+  --ok: #34c77b;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", ui-rounded, "Inter", system-ui, sans-serif;
+  --st: env(safe-area-inset-top, 0px);
+  --sb: env(safe-area-inset-bottom, 0px);
+  --sl: env(safe-area-inset-left, 0px);
+  --sr: env(safe-area-inset-right, 0px);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 var(--font); overscroll-behavior: none; }
+body { -webkit-user-select: none; user-select: none; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input, textarea, select { font: inherit; color: var(--fg); -webkit-user-select: text; user-select: text; }
+[hidden] { display: none !important; }
+
+.view { position: fixed; inset: 0; display: flex; flex-direction: column; }
+.bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(var(--st) + 10px) max(16px, var(--sr)) 10px max(16px, var(--sl));
+  border-bottom: 1px solid var(--line); background: var(--bg);
+}
+.bar h1 { flex: 1; margin: 0; font: 700 22px/1.2 var(--font-display); }
+.icon-btn { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; background: var(--surface); flex: none; }
+.icon-btn svg { width: 20px; height: 20px; }
+.text-btn { padding: 8px 12px; border-radius: 10px; color: var(--accent); font-weight: 600; }
+
+/* Library */
+.list { flex: 1; overflow-y: auto; padding: 12px max(16px, var(--sr)) calc(var(--sb) + 24px) max(16px, var(--sl)); display: flex; flex-direction: column; gap: 10px; }
+.script-row { text-align: left; padding: 14px 16px; border-radius: 14px; background: var(--surface); display: flex; flex-direction: column; gap: 4px; }
+.script-row b { font-size: 17px; }
+.script-row span { color: var(--muted); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.script-row small { color: var(--muted); font-size: 12px; opacity: .8; }
+.empty { margin: auto; text-align: center; color: var(--muted); padding: 40px 20px; }
+.banner { margin: 0 0 4px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); color: var(--muted); font-size: 13px; }
+.banner b { color: var(--fg); }
+
+/* Editor */
+.editor { flex: 1; display: flex; flex-direction: column; padding: 0 max(16px, var(--sr)) 0 max(16px, var(--sl)); min-height: 0; }
+#title { border: 0; background: none; font: 700 22px/1.3 var(--font-display); padding: 14px 0; border-bottom: 1px solid var(--line); outline: none; }
+#body { flex: 1; border: 0; background: none; resize: none; padding: 14px 0; font-size: 17px; line-height: 1.5; outline: none; min-height: 0; }
+.editor-foot { padding: 12px max(16px, var(--sr)) calc(var(--sb) + 12px) max(16px, var(--sl)); display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); }
+.meta { color: var(--muted); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+.primary { width: 100%; padding: 15px; border-radius: 14px; background: var(--rec); color: #fff; font-weight: 700; font-size: 17px; display: flex; gap: 8px; align-items: center; justify-content: center; }
+.primary svg { width: 20px; height: 20px; }
+
+/* Recorder */
+#recorder { background: #000; }
+#preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); background: #000; }
+#preview.fill { object-fit: cover; }
+.rec-ui { position: absolute; inset: 0; display: flex; flex-direction: column; pointer-events: none; }
+.rec-ui > * { pointer-events: auto; }
+
+.prompter { position: relative; flex: none; overflow: hidden; touch-action: none; cursor: grab;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 6%, #000 82%, transparent 100%);
+          mask-image: linear-gradient(to bottom, transparent 0, #000 6%, #000 82%, transparent 100%); }
+.prompter-bg { position: absolute; inset: 0; background: #000; }
+.prompter-inner { position: absolute; inset: 0; }
+.prompter-text { position: absolute; left: 0; right: 0; top: 0; white-space: pre-wrap; word-wrap: break-word;
+  font-family: var(--font-display); font-weight: 600; color: #fff; will-change: transform; }
+.marker { position: absolute; left: max(4px, var(--sl)); width: 0; height: 0; border-top: 7px solid transparent; border-bottom: 7px solid transparent; border-left: 11px solid var(--accent); opacity: .9; pointer-events: none; }
+
+.status { display: flex; align-items: center; gap: 10px; padding: 8px max(16px, var(--sr)) 0 max(16px, var(--sl)); }
+.status .icon-btn { background: rgba(0,0,0,.45); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.status .mid { flex: 1; display: flex; justify-content: center; }
+.pill { padding: 6px 12px; border-radius: 99px; background: rgba(0,0,0,.55); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.pill.rec { font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.pill.rec::before { content: ""; width: 8px; height: 8px; border-radius: 4px; background: var(--rec); animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+.error { margin: 10px max(16px, var(--sr)) 0 max(16px, var(--sl)); padding: 12px 14px; border-radius: 12px; background: rgba(235,40,48,.85); font-size: 14px; text-align: center; }
+
+.spacer { flex: 1; pointer-events: none; }
+.toast { align-self: center; margin-bottom: 10px; padding: 10px 16px; border-radius: 99px; background: rgba(22,26,46,.92); font-size: 14px; font-weight: 600; }
+
+.controls { padding: 12px max(20px, var(--sr)) calc(var(--sb) + 10px) max(20px, var(--sl)); background: rgba(11,13,26,.72); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row label { font-size: 13px; color: var(--muted); width: 104px; flex: none; }
+.row output { font-size: 12px; font-variant-numeric: tabular-nums; width: 40px; text-align: right; flex: none; color: var(--fg); }
+.row .ic { width: 18px; height: 18px; flex: none; color: var(--muted); }
+input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); height: 28px; }
+.toggles { display: flex; gap: 18px; font-size: 14px; }
+.toggles label { display: flex; align-items: center; gap: 8px; width: auto; color: var(--fg); }
+.toggles input { width: 20px; height: 20px; accent-color: var(--accent); }
+.buttons { display: flex; align-items: center; justify-content: space-between; }
+.round { width: 48px; height: 48px; border-radius: 24px; background: rgba(255,255,255,.14); display: grid; place-items: center; }
+.round svg { width: 22px; height: 22px; }
+.round.on { background: var(--accent); color: #111; }
+#recBtn { width: 76px; height: 76px; border-radius: 38px; border: 4px solid #fff; display: grid; place-items: center; }
+#recBtn i { display: block; width: 60px; height: 60px; border-radius: 30px; background: var(--rec); transition: all .2s ease; }
+#recBtn.recording i { width: 30px; height: 30px; border-radius: 7px; }
+#recBtn.counting i { background: rgba(235,40,48,.5); }
+
+.countdown { position: absolute; inset: 0; display: grid; place-items: center; font: 700 150px/1 var(--font-display); color: #fff; text-shadow: 0 4px 30px rgba(0,0,0,.6); pointer-events: none; }
+.countdown span { animation: pop .9s ease-out; }
+@keyframes pop { from { transform: scale(1.5); opacity: 0; } 30% { opacity: 1; } to { transform: scale(1); opacity: .85; } }
+
+/* Sheets */
+.sheet-wrap { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; justify-content: center; z-index: 20; }
+.sheet { width: 100%; max-width: 560px; max-height: 92%; overflow-y: auto; background: var(--surface); border-radius: 20px 20px 0 0;
+  padding: 16px max(18px, var(--sr)) calc(var(--sb) + 20px) max(18px, var(--sl)); display: flex; flex-direction: column; gap: 14px; -webkit-user-select: none; }
+.sheet-head { display: flex; align-items: center; }
+.sheet-head h2 { flex: 1; margin: 0; font: 700 19px/1.2 var(--font-display); }
+.group { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
+.group h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; padding: 8px 4px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg button.on { background: var(--surface-2); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 14px; }
+.check { display: flex; align-items: center; justify-content: space-between; font-size: 15px; gap: 12px; }
+.check input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+.take-video { width: 100%; max-height: 46vh; border-radius: 12px; background: #000; }
+.btn { padding: 14px; border-radius: 12px; background: var(--surface-2); font-weight: 600; text-align: center; display: block; color: var(--fg); text-decoration: none; }
+.btn.go { background: var(--ok); color: #04150c; }
+.btn.danger { color: #ff6b70; }
+.take-row { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+.take-row div { flex: 1; min-width: 0; }
+.take-row b { display: block; font-size: 14px; }
+.take-row small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.take-row button { padding: 8px 10px; border-radius: 8px; background: var(--surface); font-size: 13px; font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) { .countdown span, .pill.rec::before { animation: none; } #recBtn i { transition: none; } }
+</style>
+</head>
+<body>
+
+<!-- ============ LIBRARY ============ -->
+<div id="safeProbe" style="position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;padding-top:env(safe-area-inset-top,0px)"></div>
+<section id="library" class="view">
+  <header class="bar">
+    <h1>Scripts</h1>
+    <button class="icon-btn" id="openSettings1" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <button class="icon-btn" id="openTakes1" aria-label="Saved takes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4V8z"/></svg></button>
+    <button class="icon-btn" id="newScript" aria-label="New script"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  </header>
+  <div class="list" id="scriptList"></div>
+</section>
+
+<!-- ============ EDITOR ============ -->
+<section id="editorView" class="view" hidden>
+  <header class="bar">
+    <button class="text-btn" id="backBtn" style="padding-left:0">‹ Scripts</button>
+    <h1></h1>
+    <button class="text-btn" id="pasteBtn">Paste</button>
+    <button class="text-btn" id="deleteBtn" style="color:#ff6b70">Delete</button>
+  </header>
+  <div class="editor">
+    <input id="title" placeholder="Title" autocomplete="off">
+    <textarea id="body" placeholder="Type or paste your script here…"></textarea>
+  </div>
+  <div class="editor-foot">
+    <div class="meta" id="wordMeta"></div>
+    <button class="primary" id="startBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>Start Prompter</button>
+  </div>
+</section>
+
+<!-- ============ RECORDER ============ -->
+<section id="recorder" class="view" hidden>
+  <video id="preview" playsinline muted autoplay></video>
+  <div class="rec-ui">
+    <div class="prompter" id="prompter">
+      <div class="prompter-bg" id="prompterBg"></div>
+      <div class="prompter-inner" id="prompterInner"><div class="prompter-text" id="prompterText"></div></div>
+    </div>
+    <div class="marker" id="marker" style="position:absolute"></div>
+
+    <div class="status">
+      <button class="icon-btn" id="closeRec" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <div class="mid"><span class="pill" id="badge">Starting camera…</span></div>
+      <button class="icon-btn" id="openSettings2" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+    </div>
+    <div class="error" id="camError" hidden></div>
+
+    <div class="spacer"></div>
+    <div class="toast" id="toast" hidden></div>
+
+    <div class="controls">
+      <div id="adjust" hidden style="display:flex;flex-direction:column;gap:10px">
+        <div class="row"><label for="aSize">Text size</label><input type="range" id="aSize" min="18" max="80" step="1"><output id="aSizeV"></output></div>
+        <div class="row"><label for="aHeight">Prompter area</label><input type="range" id="aHeight" min="20" max="75" step="1"><output id="aHeightV"></output></div>
+        <div class="row"><label for="aBg">Background</label><input type="range" id="aBg" min="0" max="95" step="1"><output id="aBgV"></output></div>
+        <div class="row"><label for="aMargin">Side margin</label><input type="range" id="aMargin" min="0" max="80" step="1"><output id="aMarginV"></output></div>
+        <div class="toggles">
+          <label><input type="checkbox" id="aCenter">Center</label>
+          <label><input type="checkbox" id="aMirror">Mirror text</label>
+        </div>
+      </div>
+      <div class="row">
+        <label for="speed" style="width:auto">Speed</label>
+        <input type="range" id="speed" min="10" max="200" step="1">
+        <output id="speedV"></output>
+      </div>
+      <div class="buttons">
+        <button class="round" id="rewindBtn" aria-label="Back to top"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+        <button class="round" id="playBtn" aria-label="Start scrolling"><svg viewBox="0 0 24 24" fill="currentColor" id="playIcon"><path d="M7 4v16l13-8z"/></svg></button>
+        <button id="recBtn" aria-label="Start recording"><i></i></button>
+        <button class="round" id="adjustBtn" aria-label="Text options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 9 6l5 14M5.8 15h6.4M15 20l3.5-9 3.5 9M16 17.5h5"/></svg></button>
+        <button class="round" id="openTakes2" aria-label="Saved takes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
+      </div>
+    </div>
+  </div>
+  <div class="countdown" id="countdown" hidden></div>
+</section>
+
+<!-- ============ SETTINGS SHEET ============ -->
+<div class="sheet-wrap" id="settingsSheet" hidden>
+  <div class="sheet" role="dialog" aria-label="Settings">
+    <div class="sheet-head"><h2>Settings</h2><button class="text-btn" data-close>Done</button></div>
+    <div class="group">
+      <h3>Video</h3>
+      <div class="field"><span>Resolution</span><div class="seg" id="sRes"><button data-v="720">720p</button><button data-v="1080">1080p</button><button data-v="2160">4K (try)</button></div></div>
+      <div class="field"><span>Frame rate</span><div class="seg" id="sFps"><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button></div></div>
+      <div class="field"><span>Quality (bitrate)</span><div class="seg" id="sQ"><button data-v="std">Standard</button><button data-v="high">High</button><button data-v="max">Max</button></div></div>
+      <label class="check">Fill screen with preview<input type="checkbox" id="sFill"></label>
+      <label class="check">Voice processing (reduces noise and echo)<input type="checkbox" id="sVoice"></label>
+      <p class="note">Safari decides what the front camera actually gives a web page. The badge on the recording screen shows the real resolution and frame rate in use.</p>
+    </div>
+    <div class="group">
+      <h3>Recording</h3>
+      <div class="field"><span>Countdown</span><div class="seg" id="sCount"><button data-v="0">Off</button><button data-v="3">3 s</button><button data-v="5">5 s</button><button data-v="10">10 s</button></div></div>
+      <label class="check">Start scrolling when recording starts<input type="checkbox" id="sAuto"></label>
+    </div>
+    <div class="group">
+      <h3>Teleprompter</h3>
+      <div class="row"><label for="sSpeed">Scroll speed</label><input type="range" id="sSpeed" min="10" max="200" step="1"><output id="sSpeedV"></output></div>
+      <div class="row"><label for="sSize">Text size</label><input type="range" id="sSize" min="18" max="80" step="1"><output id="sSizeV"></output></div>
+      <div class="row"><label for="sHeight">Prompter area</label><input type="range" id="sHeight" min="20" max="75" step="1"><output id="sHeightV"></output></div>
+      <div class="row"><label for="sBg">Background</label><input type="range" id="sBg" min="0" max="95" step="1"><output id="sBgV"></output></div>
+      <label class="check">Center text<input type="checkbox" id="sCenter"></label>
+      <label class="check">Mirror text (for a glass rig)<input type="checkbox" id="sMirror"></label>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAKE SHEET (after recording) ============ -->
+<div class="sheet-wrap" id="takeSheet" hidden>
+  <div class="sheet" role="dialog" aria-label="Your take">
+    <div class="sheet-head"><h2 id="takeTitle">Your take</h2><button class="text-btn" data-close>Close</button></div>
+    <video class="take-video" id="takeVideo" playsinline controls></video>
+    <p class="note" id="takeInfo"></p>
+    <button class="btn go" id="takeSave">Save to Photos</button>
+    <a class="btn" id="takeDownload">Save to Files</a>
+    <button class="btn danger" id="takeDelete">Delete take</button>
+    <p class="note">In the share sheet, tap <b>Save Video</b> to put it in Photos. Takes stay in this app until you delete them, so you can save them again later.</p>
+  </div>
+</div>
+
+<!-- ============ TAKES LIST ============ -->
+<div class="sheet-wrap" id="takesSheet" hidden>
+  <div class="sheet" role="dialog" aria-label="Saved takes">
+    <div class="sheet-head"><h2>Takes</h2><button class="text-btn" data-close>Done</button></div>
+    <div id="takesList" style="display:flex;flex-direction:column;gap:8px"></div>
+    <p class="note">Takes are stored on this phone inside the app. Delete them after saving to Photos to free up space.</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+/* ---------------- storage ---------------- */
+const store = {
+  get(key, fallback) { try { const v = localStorage.getItem("prompter." + key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem("prompter." + key, JSON.stringify(value)); } catch {} },
+};
+
+const DEFAULTS = { res: 1080, fps: 30, quality: "high", fill: false, voice: false, countdown: 3, autoScroll: true,
+  speed: 40, size: 34, height: 40, bg: 50, margin: 20, center: false, mirror: false };
+const settings = Object.assign({}, DEFAULTS, store.get("settings", {}));
+const saveSettings = () => store.set("settings", settings);
+
+const SAMPLE = `Hi everyone, welcome back to the channel.
+
+This is a sample script so you can try the teleprompter. Tap the text to pause or resume scrolling. Drag it up or down to jump to any line.
+
+Use the slider at the bottom to change the speed, and the Aa button to change the text size and how much of the screen the prompter covers.
+
+When you're ready, tap the red button. You'll get a short countdown, the text starts scrolling, and when you stop you can save the video to Photos.
+
+Keep the text near the top of the screen so your eyes stay close to the camera.`;
+
+let scripts = store.get("scripts", null);
+if (!Array.isArray(scripts)) scripts = [{ id: uid(), title: "Sample script", body: SAMPLE, updated: Date.now() }];
+const saveScripts = () => store.set("scripts", scripts);
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+
+/* Takes live in IndexedDB so a long recording isn't lost if sharing fails. */
+const takesDB = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open("prompter", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("takes", { keyPath: "id" });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => {
+    const t = db.transaction("takes", mode); const out = fn(t.objectStore("takes"));
+    t.oncomplete = () => res(out && out.result); t.onerror = () => rej(t.error); }); };
+  return {
+    put: (take) => tx("readwrite", (s) => s.put(take)),
+    all: () => tx("readonly", (s) => s.getAll()),
+    del: (id) => tx("readwrite", (s) => s.delete(id)),
+  };
+})();
+
+/* ---------------- views ---------------- */
+let currentId = null;
+function show(view) {
+  for (const v of ["library", "editorView", "recorder"]) $(v).hidden = v !== view;
+}
+
+function renderLibrary() {
+  const list = $("scriptList");
+  list.textContent = "";
+  if (!window.isSecureContext) {
+    const b = document.createElement("div"); b.className = "banner";
+    b.innerHTML = "<b>Camera won't work on this address.</b> Open the app from its https:// link.";
+    list.append(b);
+  } else if (!isStandalone() && /iPhone|iPad/.test(navigator.userAgent)) {
+    const b = document.createElement("div"); b.className = "banner";
+    b.innerHTML = "<b>Tip:</b> tap Share → <b>Add to Home Screen</b> to open Prompter full screen like an app.";
+    list.append(b);
+  }
+  if (!scripts.length) {
+    const e = document.createElement("div"); e.className = "empty";
+    e.textContent = "No scripts yet. Tap + to write or paste your first one.";
+    list.append(e); return;
+  }
+  for (const s of scripts) {
+    const row = document.createElement("button"); row.className = "script-row";
+    const b = document.createElement("b"); b.textContent = s.title || "Untitled";
+    const sp = document.createElement("span"); sp.textContent = s.body || "Empty script";
+    const sm = document.createElement("small"); sm.textContent = new Date(s.updated).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    row.append(b, sp, sm);
+    row.onclick = () => openEditor(s.id);
+    list.append(row);
+  }
+}
+const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+const current = () => scripts.find((s) => s.id === currentId);
+function openEditor(id) {
+  currentId = id; const s = current(); if (!s) return;
+  $("title").value = s.title; $("body").value = s.body;
+  updateMeta(); show("editorView");
+}
+function updateMeta() {
+  const words = ($("body").value.match(/\S+/g) || []).length;
+  const mins = words / 140;
+  $("wordMeta").textContent = `${words} words · about ${mins < 1 ? "<1" : Math.round(mins)} min at a normal pace`;
+}
+function saveEditor() {
+  const s = current(); if (!s) return;
+  if (s.title !== $("title").value || s.body !== $("body").value) {
+    s.title = $("title").value; s.body = $("body").value; s.updated = Date.now();
+    scripts.sort((a, b) => b.updated - a.updated); saveScripts();
+  }
+}
+$("title").oninput = saveEditor;
+$("body").oninput = () => { saveEditor(); updateMeta(); };
+$("backBtn").onclick = () => { saveEditor(); renderLibrary(); show("library"); };
+$("newScript").onclick = () => { const s = { id: uid(), title: "", body: "", updated: Date.now() }; scripts.unshift(s); saveScripts(); openEditor(s.id); $("title").focus(); };
+let deleteArmed = false;
+$("deleteBtn").onclick = () => {
+  if (!deleteArmed) { deleteArmed = true; $("deleteBtn").textContent = "Tap again"; setTimeout(() => { deleteArmed = false; $("deleteBtn").textContent = "Delete"; }, 2500); return; }
+  scripts = scripts.filter((s) => s.id !== currentId); saveScripts(); deleteArmed = false; $("deleteBtn").textContent = "Delete";
+  renderLibrary(); show("library");
+};
+$("pasteBtn").onclick = async () => {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (t) { const b = $("body"); b.value = b.value ? b.value + "\n" + t : t; saveEditor(); updateMeta(); }
+  } catch { $("body").focus(); }
+};
+$("startBtn").onclick = () => { saveEditor(); openRecorder(current().body); };
+
+/* ---------------- prompter ---------------- */
+const P = { offset: 0, playing: false, last: 0, max: 0, readingLine: 0 };
+function layoutPrompter() {
+  const safeTop = parseFloat(getComputedStyle($("safeProbe")).paddingTop) || 0;
+  const h = window.innerHeight * settings.height / 100 + safeTop;
+  $("prompter").style.height = h + "px";
+  $("prompterBg").style.opacity = settings.bg / 100;
+  const t = $("prompterText");
+  t.style.fontSize = settings.size + "px";
+  t.style.lineHeight = "1.3";
+  t.style.padding = `0 calc(${settings.margin}px + var(--sr)) 0 calc(${settings.margin}px + var(--sl))`;
+  t.style.textAlign = settings.center ? "center" : "left";
+  $("prompterInner").style.transform = settings.mirror ? "scaleX(-1)" : "none";
+  P.readingLine = safeTop + (h - safeTop) * 0.22;
+  const m = $("marker");
+  m.style.top = (P.readingLine + settings.size * 0.65 - 7) + "px";
+  P.max = t.offsetHeight;
+  P.offset = Math.min(P.offset, P.max);
+  paintPrompter();
+}
+function paintPrompter() { $("prompterText").style.transform = `translate3d(0, ${P.readingLine - P.offset}px, 0)`; }
+function tick(ts) {
+  if (!P.playing) return;
+  if (P.last) {
+    const dt = Math.min((ts - P.last) / 1000, 0.1);
+    P.offset += settings.speed * dt;
+    if (P.offset >= P.max) { P.offset = P.max; paintPrompter(); setPlaying(false); return; }
+    paintPrompter();
+  }
+  P.last = ts;
+  requestAnimationFrame(tick);
+}
+function setPlaying(on) {
+  if (on === P.playing) return;
+  P.playing = on; P.last = 0;
+  if (on) { if (P.offset >= P.max && P.max > 0) P.offset = 0; requestAnimationFrame(tick); }
+  $("playIcon").innerHTML = on ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
+  $("playBtn").setAttribute("aria-label", on ? "Pause scrolling" : "Start scrolling");
+}
+// Tap to pause/resume, drag to scrub.
+(() => {
+  const el = $("prompter"); let startY = 0, startOff = 0, moved = false, down = false;
+  el.addEventListener("pointerdown", (e) => { down = true; moved = false; startY = e.clientY; startOff = P.offset; el.setPointerCapture(e.pointerId); });
+  el.addEventListener("pointermove", (e) => {
+    if (!down) return; const dy = e.clientY - startY;
+    if (!moved && Math.abs(dy) > 8) moved = true;
+    if (moved) { P.offset = Math.max(0, Math.min(P.max, startOff - dy)); paintPrompter(); }
+  });
+  const end = () => { if (down && !moved) setPlaying(!P.playing); down = false; };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", () => { down = false; });
+})();
+$("playBtn").onclick = () => setPlaying(!P.playing);
+$("rewindBtn").onclick = () => { P.offset = 0; paintPrompter(); };
+
+/* ---------------- sliders & toggles bound to settings ---------------- */
+const fmt = { speed: (v) => v, size: (v) => v, height: (v) => v + "%", bg: (v) => v + "%", margin: (v) => v };
+function bindRange(id, key) {
+  const el = $(id), out = $(id + "V");
+  const sync = () => { el.value = settings[key]; if (out) out.textContent = fmt[key](settings[key]); };
+  el.addEventListener("input", () => { settings[key] = Number(el.value); saveSettings(); syncAll(); if (key !== "speed") layoutPrompter(); });
+  return sync;
+}
+function bindCheck(id, key, after) {
+  const el = $(id);
+  el.addEventListener("change", () => { settings[key] = el.checked; saveSettings(); syncAll(); after && after(); });
+  return () => { el.checked = settings[key]; };
+}
+function bindSeg(id, key, parse, after) {
+  const el = $(id);
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const v = parse(b.dataset.v); if (settings[key] === v) return;
+    settings[key] = v; saveSettings(); syncAll(); after && after();
+  });
+  return () => { for (const b of el.children) b.classList.toggle("on", parse(b.dataset.v) === settings[key]); };
+}
+const restartIfOpen = () => { if (!$("recorder").hidden && !recording) startCamera(); };
+const syncers = [
+  bindRange("speed", "speed"), bindRange("sSpeed", "speed"),
+  bindRange("aSize", "size"), bindRange("sSize", "size"),
+  bindRange("aHeight", "height"), bindRange("sHeight", "height"),
+  bindRange("aBg", "bg"), bindRange("sBg", "bg"),
+  bindRange("aMargin", "margin"),
+  bindCheck("aCenter", "center", layoutPrompter), bindCheck("sCenter", "center", layoutPrompter),
+  bindCheck("aMirror", "mirror", layoutPrompter), bindCheck("sMirror", "mirror", layoutPrompter),
+  bindCheck("sFill", "fill", () => $("preview").classList.toggle("fill", settings.fill)),
+  bindCheck("sVoice", "voice", restartIfOpen),
+  bindCheck("sAuto", "autoScroll"),
+  bindSeg("sRes", "res", Number, restartIfOpen),
+  bindSeg("sFps", "fps", Number, restartIfOpen),
+  bindSeg("sQ", "quality", String),
+  bindSeg("sCount", "countdown", Number),
+];
+function syncAll() { syncers.forEach((f) => f()); }
+
+$("adjustBtn").onclick = () => { const a = $("adjust"); a.hidden = !a.hidden; $("adjustBtn").classList.toggle("on", !a.hidden); };
+
+/* ---------------- camera ---------------- */
+let stream = null, recorder = null, chunks = [], recording = false, recStart = 0, timerId = 0, countdownTimer = 0, wakeLock = null;
+
+function setBadge(text, rec) { const b = $("badge"); b.textContent = text; b.classList.toggle("rec", !!rec); }
+function showError(msg) { const e = $("camError"); e.textContent = msg; e.hidden = !msg; }
+
+async function startCamera() {
+  stopCamera();
+  showError("");
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    showError("The camera only works when Prompter is opened from its https:// link."); setBadge("No camera"); return;
+  }
+  const long = settings.res === 2160 ? 3840 : settings.res === 1080 ? 1920 : 1280;
+  const short = settings.res;
+  const portrait = window.innerHeight > window.innerWidth;
+  const video = {
+    facingMode: "user",
+    width: { ideal: portrait ? short : long },
+    height: { ideal: portrait ? long : short },
+    frameRate: { ideal: settings.fps },
+  };
+  const audio = { echoCancellation: settings.voice, noiseSuppression: settings.voice, autoGainControl: settings.voice };
+  setBadge("Starting camera…");
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video, audio });
+  } catch (err) {
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true }); }
+    catch (err2) {
+      showError(err2.name === "NotAllowedError"
+        ? "Camera or microphone access was blocked. On iPhone: Settings › Apps › Safari › Camera and Microphone › Allow, then reopen Prompter."
+        : "Couldn't start the camera: " + (err2.message || err2.name));
+      setBadge("No camera"); return;
+    }
+  }
+  const v = $("preview"); v.srcObject = stream; v.classList.toggle("fill", settings.fill);
+  try { await v.play(); } catch {}
+  updateBadge();
+}
+function updateBadge() {
+  if (!stream || recording) return;
+  const s = stream.getVideoTracks()[0]?.getSettings() || {};
+  const w = s.width || $("preview").videoWidth, h = s.height || $("preview").videoHeight;
+  const short = Math.min(w, h);
+  const label = short >= 2000 ? "4K" : short ? short + "p" : "";
+  setBadge(`${label}${s.frameRate ? " · " + Math.round(s.frameRate) + " fps" : ""}${w ? ` · ${w}×${h}` : ""}`);
+}
+$("preview").addEventListener("loadedmetadata", updateBadge);
+$("preview").addEventListener("resize", updateBadge);
+function stopCamera() { if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; }
+
+function pickMime() {
+  const opts = ["video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4;codecs=avc1,mp4a.40.2", "video/mp4",
+    "video/webm;codecs=vp9,opus", "video/webm"];
+  return opts.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
+}
+function bitrate() {
+  const short = Math.min(...(() => { const s = stream.getVideoTracks()[0]?.getSettings() || {}; return [s.width || 1080, s.height || 1920]; })());
+  const table = short >= 2000 ? { std: 30, high: 45, max: 60 } : short >= 1000 ? { std: 10, high: 16, max: 24 } : { std: 5, high: 8, max: 12 };
+  return table[settings.quality] * 1_000_000;
+}
+
+function startRecording() {
+  if (!stream) return;
+  const mimeType = pickMime();
+  try {
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: bitrate(), audioBitsPerSecond: 192000 });
+  } catch {
+    recorder = new MediaRecorder(stream);
+  }
+  chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  recorder.onstop = finishRecording;
+  recorder.start(1000);
+  recording = true; recStart = Date.now();
+  $("recBtn").classList.add("recording"); $("recBtn").setAttribute("aria-label", "Stop recording");
+  $("closeRec").disabled = true; $("closeRec").style.opacity = .3;
+  const paintTimer = () => { const s = Math.floor((Date.now() - recStart) / 1000); setBadge(`${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`, true); };
+  paintTimer(); timerId = setInterval(paintTimer, 500);
+  if (settings.autoScroll) setPlaying(true);
+}
+function stopRecording() { if (recorder && recorder.state !== "inactive") recorder.stop(); }
+
+async function finishRecording() {
+  clearInterval(timerId);
+  recording = false; setPlaying(false);
+  $("recBtn").classList.remove("recording"); $("recBtn").setAttribute("aria-label", "Start recording");
+  $("closeRec").disabled = false; $("closeRec").style.opacity = 1;
+  updateBadge();
+  const type = (recorder.mimeType || chunks[0]?.type || "video/mp4").split(";")[0];
+  const blob = new Blob(chunks, { type });
+  chunks = [];
+  const d = new Date(), pad = (n) => String(n).padStart(2, "0");
+  const ext = type.includes("webm") ? "webm" : "mp4";
+  const take = { id: uid(), name: `Prompter-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`,
+    type, blob, size: blob.size, duration: Math.round((Date.now() - recStart) / 1000), created: Date.now() };
+  try { await takesDB.put(take); } catch { toast("Couldn't keep a copy in the app. Save it now."); }
+  openTake(take);
+}
+
+function startCountdown() {
+  let n = settings.countdown;
+  const el = $("countdown");
+  $("recBtn").classList.add("counting");
+  const step = () => {
+    if (n <= 0) { el.hidden = true; $("recBtn").classList.remove("counting"); countdownTimer = 0; startRecording(); return; }
+    el.hidden = false; el.innerHTML = `<span>${n}</span>`; n--;
+    countdownTimer = setTimeout(step, 1000);
+  };
+  step();
+}
+function cancelCountdown() { clearTimeout(countdownTimer); countdownTimer = 0; $("countdown").hidden = true; $("recBtn").classList.remove("counting"); }
+
+$("recBtn").onclick = () => {
+  if (recording) return stopRecording();
+  if (countdownTimer) return cancelCountdown();
+  if (!stream) return toast("Camera isn't ready yet.");
+  setPlaying(false);
+  settings.countdown > 0 ? startCountdown() : startRecording();
+};
+
+async function openRecorder(text) {
+  $("prompterText").textContent = text || "This script is empty. Go back and type or paste your script.";
+  P.offset = 0; setPlaying(false);
+  show("recorder");
+  syncAll(); layoutPrompter();
+  requestWakeLock();
+  await startCamera();
+}
+function closeRecorder() {
+  if (recording) return;
+  cancelCountdown(); setPlaying(false); stopCamera(); releaseWakeLock();
+  renderLibrary(); show(currentId && current() ? "editorView" : "library");
+}
+$("closeRec").onclick = closeRecorder;
+
+async function requestWakeLock() { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
+function releaseWakeLock() { try { wakeLock?.release(); } catch {} wakeLock = null; }
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && !$("recorder").hidden) {
+    requestWakeLock();
+    if (!stream || stream.getVideoTracks()[0]?.readyState !== "live") startCamera();
+  } else if (document.visibilityState === "hidden" && recording) {
+    stopRecording();
+  }
+});
+let resizeTimer = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if ($("recorder").hidden) return;
+    layoutPrompter();
+    // Re-open the camera in the new orientation so the video shape matches how you hold the phone.
+    if (!recording && !countdownTimer) startCamera();
+  }, 350);
+});
+
+/* ---------------- sheets ---------------- */
+function openSheet(id) { $(id).hidden = false; }
+function closeSheet(id) {
+  $(id).hidden = true;
+  if (id === "takeSheet") { const v = $("takeVideo"); v.pause(); if (v.src) URL.revokeObjectURL(v.src); v.removeAttribute("src"); v.load(); }
+}
+document.querySelectorAll(".sheet-wrap").forEach((w) => {
+  w.addEventListener("click", (e) => { if (e.target === w || e.target.closest("[data-close]")) closeSheet(w.id); });
+});
+for (const id of ["openSettings1", "openSettings2"]) $(id).onclick = () => { syncAll(); openSheet("settingsSheet"); };
+for (const id of ["openTakes1", "openTakes2"]) $(id).onclick = () => { if (!recording) openTakesList(); };
+
+let activeTake = null;
+function openTake(take) {
+  activeTake = take;
+  const url = URL.createObjectURL(take.blob);
+  $("takeVideo").src = url;
+  $("takeDownload").href = url;
+  $("takeDownload").download = take.name;
+  $("takeTitle").textContent = take.name.replace(/\.\w+$/, "");
+  $("takeInfo").textContent = `${fmtDur(take.duration)} · ${fmtSize(take.size)}`;
+  openSheet("takeSheet");
+}
+const fmtDur = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+const fmtSize = (b) => b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : (b / 1e6).toFixed(1) + " MB";
+
+$("takeSave").onclick = async () => {
+  if (!activeTake) return;
+  const file = new File([activeTake.blob], activeTake.name, { type: activeTake.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); }
+    catch (e) { if (e.name !== "AbortError") toast("Sharing failed. Try Save to Files instead."); }
+  } else {
+    $("takeDownload").click();
+  }
+};
+$("takeDelete").onclick = async () => {
+  if (!activeTake) return;
+  const btn = $("takeDelete");
+  if (btn.dataset.armed !== "1") { btn.dataset.armed = "1"; btn.textContent = "Tap again to delete"; setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Delete take"; }, 2500); return; }
+  btn.dataset.armed = ""; btn.textContent = "Delete take";
+  try { await takesDB.del(activeTake.id); } catch {}
+  activeTake = null; closeSheet("takeSheet"); toast("Take deleted");
+};
+
+async function openTakesList() {
+  const list = $("takesList"); list.textContent = "";
+  let takes = [];
+  try { takes = (await takesDB.all()) || []; } catch {}
+  takes.sort((a, b) => b.created - a.created);
+  if (!takes.length) { const p = document.createElement("p"); p.className = "note"; p.textContent = "No takes yet. Recordings show up here after you stop."; list.append(p); }
+  for (const t of takes) {
+    const row = document.createElement("div"); row.className = "take-row";
+    const info = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = new Date(t.created).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const sm = document.createElement("small"); sm.textContent = `${fmtDur(t.duration)} · ${fmtSize(t.size)}`;
+    info.append(b, sm);
+    const open = document.createElement("button"); open.textContent = "Open";
+    open.onclick = () => { closeSheet("takesSheet"); openTake(t); };
+    row.append(info, open); list.append(row);
+  }
+  openSheet("takesSheet");
+}
+
+let toastTimer = 0;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3000); }
+
+/* ---------------- boot ---------------- */
+syncAll();
+renderLibrary();
+if ("serviceWorker" in navigator && window.isSecureContext && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>
