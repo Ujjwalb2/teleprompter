@@ -677,10 +677,24 @@ function unlockAudio() {
   const mic = stream?.getAudioTracks()[0];
   if (!mic || mic.readyState !== "live") return;      // never before the mic is open
   try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state !== "running") audioCtx.resume().then(() => { if (!meterRAF) startMeter(); }).catch(() => {});
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      // iPhone pauses this audio engine when recording starts or a call/notification interrupts. Wake it straight back up.
+      audioCtx.onstatechange = () => {
+        if (!stream) return;
+        if (audioCtx.state !== "running") audioCtx.resume().catch(() => {});
+        else refreshMeter();
+      };
+    }
+    if (audioCtx.state !== "running") audioCtx.resume().then(refreshMeter).catch(() => {});
   } catch {}
   if (!meterRAF) startMeter();
+}
+// Re-attach the meter to the current mic (used after recording starts or iPhone interrupts audio).
+function refreshMeter() {
+  if (!stream || $("recorder").hidden) return;
+  if (audioCtx && audioCtx.state !== "running") audioCtx.resume().catch(() => {});
+  startMeter();
 }
 function startMeter() {
   stopMeter();
@@ -780,6 +794,8 @@ function startRecording() {
   recorder.start(1000);
   recording = true; recStart = Date.now();
   updateMicWarning();
+  // Starting the recorder can put the meter to sleep on iPhone; re-attach it a few times as audio settles.
+  for (const ms of [300, 1000, 2500]) setTimeout(() => { if (recording && (!audioCtx || audioCtx.state !== "running" || performance.now() - lastSoundAt > 1500)) refreshMeter(); }, ms);
   keepPreviewPlaying(); setTimeout(keepPreviewPlaying, 300); setTimeout(keepPreviewPlaying, 1000);
   $("recBtn").classList.add("recording"); $("recBtn").setAttribute("aria-label", "Stop recording");
   $("closeRec").disabled = true; $("closeRec").style.opacity = .3;
@@ -831,6 +847,7 @@ function startCountdown() {
 function cancelCountdown() { clearTimeout(countdownTimer); countdownTimer = 0; $("countdown").hidden = true; $("recBtn").classList.remove("counting"); }
 
 $("recBtn").onclick = () => {
+  unlockAudio();   // this tap also keeps the meter's audio engine awake for the recording
   if (recording) return stopRecording();
   if (countdownTimer) return cancelCountdown();
   if (!stream) return toast("Camera isn't ready yet.");
